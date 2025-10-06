@@ -5,23 +5,37 @@ interface FilteredVideoPlayerProps {
   src: string;
   filterType: string;
   isFilterEnabled: boolean;
+  uiTheme: 'default' | 'theater' | 'window' | 'editor';
+  timelineMode: boolean;
+  startTime: number;
+  endTime: number;
 }
 
 const FilteredVideoPlayer: React.FC<FilteredVideoPlayerProps> = ({
   src,
   filterType,
-  isFilterEnabled
+  isFilterEnabled,
+  uiTheme,
+  timelineMode,
+  startTime,
+  endTime
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [fps, setFps] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [filterTimeline, setFilterTimeline] = useState<Array<{start: number, end: number, filter: string}>>([]);
   const segmenterRef = useRef<SelfieSegmentation | null>(null);
   const animationFrameRef = useRef<number>();
   const frameCountRef = useRef<number>(0);
   const lastFrameTimeRef = useRef<number>(Date.now());
   const currentFilterRef = useRef<string>(filterType);
   const isFilterEnabledRef = useRef<boolean>(isFilterEnabled);
+  const timelineModeRef = useRef<boolean>(timelineMode);
+  const startTimeRef = useRef<number>(startTime);
+  const endTimeRef = useRef<number>(endTime);
 
   // Update refs when props change
   useEffect(() => {
@@ -31,6 +45,12 @@ const FilteredVideoPlayer: React.FC<FilteredVideoPlayerProps> = ({
   useEffect(() => {
     isFilterEnabledRef.current = isFilterEnabled;
   }, [isFilterEnabled]);
+
+  useEffect(() => {
+    timelineModeRef.current = timelineMode;
+    startTimeRef.current = startTime;
+    endTimeRef.current = endTime;
+  }, [timelineMode, startTime, endTime]);
 
   // Initialize MediaPipe Selfie Segmentation
   useEffect(() => {
@@ -86,8 +106,14 @@ const FilteredVideoPlayer: React.FC<FilteredVideoPlayerProps> = ({
         canvas.height = video.videoHeight;
       }
 
-      // If filter is disabled, just draw the video
-      if (!isFilterEnabledRef.current) {
+      // Check if we should apply filter based on timeline mode
+      const shouldApplyFilter = isFilterEnabledRef.current && (
+        !timelineModeRef.current ||
+        (video.currentTime >= startTimeRef.current && video.currentTime <= endTimeRef.current)
+      );
+
+      // If filter is disabled or outside timeline range, just draw the video
+      if (!shouldApplyFilter) {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       } else {
         // Use MediaPipe to segment the person
@@ -147,10 +173,18 @@ const FilteredVideoPlayer: React.FC<FilteredVideoPlayerProps> = ({
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      setDuration(video.duration);
+    };
+
+    const handleTimeUpdate = () => {
+      setCurrentTime(video.currentTime);
     };
 
     const handlePlay = () => {
       setIsPlaying(true);
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
       processFrame();
     };
 
@@ -161,14 +195,25 @@ const FilteredVideoPlayer: React.FC<FilteredVideoPlayerProps> = ({
       }
     };
 
+    const handleEnded = () => {
+      setIsPlaying(false);
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
     video.addEventListener('play', handlePlay);
     video.addEventListener('pause', handlePause);
+    video.addEventListener('ended', handleEnded);
+    video.addEventListener('timeupdate', handleTimeUpdate);
 
     return () => {
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('pause', handlePause);
+      video.removeEventListener('ended', handleEnded);
+      video.removeEventListener('timeupdate', handleTimeUpdate);
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
@@ -178,21 +223,73 @@ const FilteredVideoPlayer: React.FC<FilteredVideoPlayerProps> = ({
   const handleCanvasClick = () => {
     const video = videoRef.current;
     if (!video) return;
-    if (video.paused) {
+    if (video.paused || video.ended) {
+      if (video.ended) {
+        video.currentTime = 0;
+      }
       video.play();
     } else {
       video.pause();
     }
   };
 
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = parseFloat(e.target.value);
+  };
+
+  const getVideoContainerStyles = () => {
+    const baseStyles: React.CSSProperties = {
+      position: 'relative',
+      display: 'inline-block',
+      width: '100%',
+      maxWidth: '1000px'
+    };
+
+    switch (uiTheme) {
+      case 'theater':
+        return {
+          ...baseStyles,
+          boxShadow: '0 30px 80px rgba(0,0,0,0.9), 0 0 100px rgba(0,0,0,0.5)',
+          padding: '30px',
+          background: 'linear-gradient(145deg, #0a0a0a 0%, #000 100%)',
+          borderRadius: '4px'
+        };
+      case 'window':
+        return {
+          ...baseStyles,
+          borderRadius: '12px',
+          overflow: 'hidden',
+          boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
+          border: '8px solid rgba(255,255,255,0.2)'
+        };
+      case 'editor':
+        return {
+          ...baseStyles,
+          border: '1px solid #3c3c3c',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
+        };
+      default:
+        return baseStyles;
+    }
+  };
+
   return (
-    <div style={{ position: 'relative', display: 'inline-block', width: '100%', maxWidth: '800px' }}>
+    <div style={getVideoContainerStyles()}>
       <video
         ref={videoRef}
         src={src}
         crossOrigin="anonymous"
         style={{ display: 'none' }}
         playsInline
+        preload="auto"
       />
       <canvas
         ref={canvasRef}
@@ -200,12 +297,15 @@ const FilteredVideoPlayer: React.FC<FilteredVideoPlayerProps> = ({
         style={{
           width: '100%',
           height: 'auto',
-          borderRadius: '8px',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+          borderRadius: '2px',
           cursor: 'pointer',
-          backgroundColor: '#000'
+          backgroundColor: '#000',
+          display: 'block',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
         }}
       />
+
+      {/* FPS Counter */}
       <div style={{
         position: 'absolute',
         top: '10px',
@@ -216,13 +316,51 @@ const FilteredVideoPlayer: React.FC<FilteredVideoPlayerProps> = ({
         borderRadius: '4px',
         fontSize: '12px'
       }}>
-        {isPlaying ? `Processing: ${fps} FPS` : 'Click to Play'}
+        {isPlaying ? `${fps} FPS` : 'Paused'}
       </div>
+
+      {/* Timeline Controls */}
+      {uiTheme === 'editor' && (
+        <div style={{
+          background: '#252526',
+          padding: '15px',
+          borderTop: '1px solid #3c3c3c'
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            marginBottom: '10px'
+          }}>
+            <span style={{ color: '#ccc', fontSize: '12px', minWidth: '40px' }}>
+              {formatTime(currentTime)}
+            </span>
+            <input
+              type="range"
+              min="0"
+              max={duration || 0}
+              step="0.1"
+              value={currentTime}
+              onChange={handleSeek}
+              style={{
+                flex: 1,
+                cursor: 'pointer'
+              }}
+            />
+            <span style={{ color: '#ccc', fontSize: '12px', minWidth: '40px' }}>
+              {formatTime(duration)}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Playback Controls */}
       <div style={{
         marginTop: '10px',
         display: 'flex',
         gap: '10px',
-        justifyContent: 'center'
+        justifyContent: 'center',
+        alignItems: 'center'
       }}>
         <button
           onClick={handleCanvasClick}
@@ -238,6 +376,14 @@ const FilteredVideoPlayer: React.FC<FilteredVideoPlayerProps> = ({
         >
           {isPlaying ? '⏸ Pause' : '▶ Play'}
         </button>
+        {uiTheme !== 'editor' && (
+          <span style={{
+            color: uiTheme === 'default' ? '#666' : '#ccc',
+            fontSize: '14px'
+          }}>
+            {formatTime(currentTime)} / {formatTime(duration)}
+          </span>
+        )}
       </div>
     </div>
   );

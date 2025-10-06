@@ -16,149 +16,293 @@ const App: React.FC = () => {
   const [filterType, setFilterType] = useState<string>('grayscale');
   const [isFilterEnabled, setIsFilterEnabled] = useState<boolean>(true);
   const [response, setResponse] = useState<string>('');
+  const [currentVideoUrl, setCurrentVideoUrl] = useState<string>(videoUrl);
+  const [timelineMode, setTimelineMode] = useState<boolean>(false);
+  const [startTime, setStartTime] = useState<number>(0);
+  const [endTime, setEndTime] = useState<number>(10);
 
-  const pingBackend = async () => {
-    try {
-      const res = await fetch('http://127.0.0.1:8080/hello-world');
-      const data = await res.text();
-      setResponse(data);
-      console.log('Backend response:', data);
-    } catch (error) {
-      console.error('Error pinging backend:', error);
-      setResponse('Error connecting to backend');
+  const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type.startsWith('video/')) {
+      const url = URL.createObjectURL(file);
+      setCurrentVideoUrl(url);
     }
   };
 
   return (
-    <div className="container">
-      <div style={{ textAlign: 'center', padding: '20px' }}>
-        <h1 style={{ marginBottom: '10px', fontSize: '2.5em', fontWeight: 'bold' }}>
-          Video Background Filter
+    <div style={{
+      background: '#000',
+      minHeight: '100vh',
+      width: '100%',
+      padding: '50px 20px',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center'
+    }}>
+      {/* Theater Header */}
+      <div style={{
+        textAlign: 'center',
+        marginBottom: '50px',
+        maxWidth: '1200px',
+        width: '100%'
+      }}>
+        <h1 style={{
+          fontSize: '3.5em',
+          fontWeight: '200',
+          color: '#fff',
+          marginBottom: '15px',
+          letterSpacing: '8px',
+          textTransform: 'uppercase'
+        }}>
+          Cinema Filter
         </h1>
-        <p style={{ marginBottom: '30px', color: '#666', fontSize: '1.1em' }}>
-          Keep the speaker in color while filtering the background
+        <p style={{
+          color: '#666',
+          fontSize: '1em',
+          fontWeight: '300',
+          letterSpacing: '2px'
+        }}>
+          Real-time background filtering in your browser
         </p>
+      </div>
 
-        <div className="video-container" style={{ marginBottom: '30px' }}>
-          <FilteredVideoPlayer
-            src={videoUrl}
-            filterType={filterType}
-            isFilterEnabled={isFilterEnabled}
-          />
+      {/* Video Player */}
+      <div style={{
+        marginBottom: '60px',
+        width: '100%',
+        maxWidth: '1100px',
+        display: 'flex',
+        justifyContent: 'center'
+      }}>
+        <FilteredVideoPlayer
+          src={currentVideoUrl}
+          filterType={filterType}
+          isFilterEnabled={isFilterEnabled}
+          uiTheme="theater"
+          timelineMode={timelineMode}
+          startTime={startTime}
+          endTime={endTime}
+        />
+      </div>
+
+      {/* Controls Panel */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: '25px',
+        maxWidth: '1100px',
+        width: '100%',
+        padding: '0 20px'
+      }}>
+        {/* Video Upload */}
+        <div style={{
+          background: 'rgba(255,255,255,0.05)',
+          padding: '25px',
+          borderRadius: '12px',
+          border: '1px solid rgba(255,255,255,0.1)',
+          backdropFilter: 'blur(10px)'
+        }}>
+          <h3 style={{
+            marginBottom: '15px',
+            fontSize: '1.1em',
+            color: '#fff',
+            fontWeight: '300',
+            letterSpacing: '1px',
+            textTransform: 'uppercase'
+          }}>Upload Video</h3>
+          <label
+            style={{
+              display: 'block',
+              padding: '20px',
+              borderRadius: '8px',
+              border: '2px dashed rgba(255,255,255,0.3)',
+              cursor: 'pointer',
+              background: 'rgba(255,255,255,0.02)',
+              color: '#888',
+              textAlign: 'center',
+              transition: 'all 0.3s'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.5)';
+              e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)';
+              e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
+            }}
+          >
+            <input
+              type="file"
+              accept="video/*"
+              onChange={handleVideoUpload}
+              style={{ display: 'none' }}
+            />
+            📁 Choose a video file
+          </label>
         </div>
 
+        {/* Filter Controls */}
         <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '20px',
-          maxWidth: '600px',
-          margin: '0 auto'
+          background: 'rgba(255,255,255,0.05)',
+          padding: '25px',
+          borderRadius: '12px',
+          border: '1px solid rgba(255,255,255,0.1)',
+          backdropFilter: 'blur(10px)'
         }}>
-          {/* Filter Controls */}
-          <div style={{
-            background: '#f8f9fa',
-            padding: '20px',
-            borderRadius: '8px',
-            width: '100%',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-          }}>
-            <h3 style={{ marginBottom: '15px', fontSize: '1.2em' }}>Filter Controls</h3>
+          <h3 style={{
+            marginBottom: '15px',
+            fontSize: '1.1em',
+            color: '#fff',
+            fontWeight: '300',
+            letterSpacing: '1px',
+            textTransform: 'uppercase'
+          }}>Filter Controls</h3>
 
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              cursor: 'pointer',
+              fontSize: '1em',
+              color: '#ccc'
+            }}>
+              <input
+                type="checkbox"
+                checked={isFilterEnabled}
+                onChange={(e) => setIsFilterEnabled(e.target.checked)}
+                style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+              />
+              <span>Enable Background Filter</span>
+            </label>
+          </div>
+
+          {isFilterEnabled && (
+            <>
+              <div style={{
                 display: 'flex',
-                alignItems: 'center',
                 gap: '10px',
-                cursor: 'pointer',
-                fontSize: '1.1em'
+                marginBottom: '20px'
               }}>
-                <input
-                  type="checkbox"
-                  checked={isFilterEnabled}
-                  onChange={(e) => setIsFilterEnabled(e.target.checked)}
-                  style={{ width: '20px', height: '20px', cursor: 'pointer' }}
-                />
-                <span>Enable Background Filter</span>
-              </label>
-            </div>
+                {['grayscale', 'sepia', 'blur'].map((filter) => (
+                  <button
+                    key={filter}
+                    onClick={() => setFilterType(filter)}
+                    style={{
+                      flex: 1,
+                      padding: '12px',
+                      border: filterType === filter ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      background: filterType === filter ? 'rgba(255,255,255,0.1)' : 'transparent',
+                      color: '#fff',
+                      transition: 'all 0.3s',
+                      textTransform: 'capitalize',
+                      fontSize: '0.9em',
+                      letterSpacing: '0.5px'
+                    }}
+                  >
+                    {filter}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
 
-            {isFilterEnabled && (
+        {/* Timeline Controls */}
+        <div style={{
+          background: 'rgba(255,255,255,0.05)',
+          padding: '25px',
+          borderRadius: '12px',
+          border: '1px solid rgba(255,255,255,0.1)',
+          backdropFilter: 'blur(10px)'
+        }}>
+          <h3 style={{
+            marginBottom: '15px',
+            fontSize: '1.1em',
+            color: '#fff',
+            fontWeight: '300',
+            letterSpacing: '1px',
+            textTransform: 'uppercase'
+          }}>Timeline</h3>
+
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              cursor: 'pointer',
+              fontSize: '1em',
+              color: '#ccc'
+            }}>
+              <input
+                type="checkbox"
+                checked={timelineMode}
+                onChange={(e) => setTimelineMode(e.target.checked)}
+                style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+              />
+              <span>Apply filter during timeframe</span>
+            </label>
+          </div>
+
+          {timelineMode && (
+            <div style={{
+              background: 'rgba(255,255,255,0.03)',
+              padding: '15px',
+              borderRadius: '8px',
+              border: '1px solid rgba(255,255,255,0.1)'
+            }}>
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{
+                  color: '#aaa',
+                  fontSize: '0.85em',
+                  display: 'block',
+                  marginBottom: '8px',
+                  letterSpacing: '0.5px'
+                }}>
+                  Start: {startTime.toFixed(1)}s
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="60"
+                  step="0.5"
+                  value={startTime}
+                  onChange={(e) => setStartTime(parseFloat(e.target.value))}
+                  style={{
+                    width: '100%',
+                    cursor: 'pointer',
+                    accentColor: '#fff'
+                  }}
+                />
+              </div>
               <div>
                 <label style={{
+                  color: '#aaa',
+                  fontSize: '0.85em',
                   display: 'block',
-                  marginBottom: '10px',
-                  fontWeight: 'bold'
+                  marginBottom: '8px',
+                  letterSpacing: '0.5px'
                 }}>
-                  Filter Type:
+                  End: {endTime.toFixed(1)}s
                 </label>
-                <div style={{
-                  display: 'flex',
-                  gap: '10px',
-                  justifyContent: 'center',
-                  flexWrap: 'wrap'
-                }}>
-                  {['grayscale', 'sepia', 'blur'].map((filter) => (
-                    <button
-                      key={filter}
-                      onClick={() => setFilterType(filter)}
-                      className={`btn ${filterType === filter ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{
-                        padding: '10px 20px',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontWeight: filterType === filter ? 'bold' : 'normal',
-                        background: filterType === filter ? '#007bff' : '#6c757d',
-                        color: 'white',
-                        transition: 'all 0.2s',
-                        textTransform: 'capitalize'
-                      }}
-                    >
-                      {filter}
-                    </button>
-                  ))}
-                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="60"
+                  step="0.5"
+                  value={endTime}
+                  onChange={(e) => setEndTime(parseFloat(e.target.value))}
+                  style={{
+                    width: '100%',
+                    cursor: 'pointer',
+                    accentColor: '#fff'
+                  }}
+                />
               </div>
-            )}
-          </div>
-
-          {/* Backend Test */}
-          <div style={{
-            background: '#f8f9fa',
-            padding: '20px',
-            borderRadius: '8px',
-            width: '100%',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-          }}>
-            <h3 style={{ marginBottom: '15px', fontSize: '1.2em' }}>Backend Connection</h3>
-            <button
-              onClick={pingBackend}
-              className="btn btn-primary"
-              style={{
-                padding: '10px 20px',
-                background: '#28a745',
-                border: 'none',
-                borderRadius: '4px',
-                color: 'white',
-                cursor: 'pointer',
-                fontWeight: 'bold'
-              }}
-            >
-              Test Backend Connection
-            </button>
-            {response && (
-              <div style={{
-                marginTop: '10px',
-                padding: '10px',
-                backgroundColor: '#e7f3ff',
-                borderRadius: '4px',
-                border: '1px solid #b3d9ff'
-              }}>
-                <strong>Response:</strong> {response}
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
