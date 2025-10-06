@@ -21,6 +21,39 @@ def hello_world():
         logger.error(f"Error: {e}")
         return jsonify({"error": str(e)}), 500
 
+@app.route("/process-frame", methods=["POST"])
+def process_frame():
+    """
+    Process a video frame to apply background filter while keeping person in color
+    Expected JSON body:
+    {
+        "image": "base64_encoded_image",
+        "filter": "grayscale" | "sepia" | "blur"
+    }
+    """
+    try:
+        data = request.get_json()
+
+        if not data or 'image' not in data:
+            return jsonify({"error": "No image data provided"}), 400
+
+        image_data = data['image']
+        filter_type = data.get('filter', 'grayscale')
+
+        logger.info(f"Processing frame with filter: {filter_type}")
+
+        # Process the frame
+        processed_image = process_frame_with_background_filter(image_data, filter_type)
+
+        return jsonify({
+            "processedImage": processed_image,
+            "filter": filter_type
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error processing frame: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 
 if __name__ == "__main__":

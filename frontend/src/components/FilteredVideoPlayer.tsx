@@ -1,0 +1,246 @@
+import React, { useRef, useEffect, useState } from 'react';
+import { SelfieSegmentation } from '@mediapipe/selfie_segmentation';
+
+interface FilteredVideoPlayerProps {
+  src: string;
+  filterType: string;
+  isFilterEnabled: boolean;
+}
+
+const FilteredVideoPlayer: React.FC<FilteredVideoPlayerProps> = ({
+  src,
+  filterType,
+  isFilterEnabled
+}) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [fps, setFps] = useState(0);
+  const segmenterRef = useRef<SelfieSegmentation | null>(null);
+  const animationFrameRef = useRef<number>();
+  const frameCountRef = useRef<number>(0);
+  const lastFrameTimeRef = useRef<number>(Date.now());
+  const currentFilterRef = useRef<string>(filterType);
+  const isFilterEnabledRef = useRef<boolean>(isFilterEnabled);
+
+  // Update refs when props change
+  useEffect(() => {
+    currentFilterRef.current = filterType;
+  }, [filterType]);
+
+  useEffect(() => {
+    isFilterEnabledRef.current = isFilterEnabled;
+  }, [isFilterEnabled]);
+
+  // Initialize MediaPipe Selfie Segmentation
+  useEffect(() => {
+    const segmenter = new SelfieSegmentation({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`,
+    });
+    segmenter.setOptions({ modelSelection: 1 });
+    segmenterRef.current = segmenter;
+
+    return () => {
+      segmenter.close();
+    };
+  }, []);
+
+  // Process video frames
+  useEffect(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const applyFilter = (imageData: ImageData, filter: string) => {
+      const data = imageData.data;
+
+      if (filter === 'grayscale') {
+        for (let i = 0; i < data.length; i += 4) {
+          const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          data[i] = data[i + 1] = data[i + 2] = gray;
+        }
+      } else if (filter === 'sepia') {
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i], g = data[i + 1], b = data[i + 2];
+          data[i] = Math.min(255, 0.393 * r + 0.769 * g + 0.189 * b);
+          data[i + 1] = Math.min(255, 0.349 * r + 0.686 * g + 0.168 * b);
+          data[i + 2] = Math.min(255, 0.272 * r + 0.534 * g + 0.131 * b);
+        }
+      } else if (filter === 'blur') {
+        // For blur, we'll use CSS filter instead as it's more performant
+      }
+
+      return imageData;
+    };
+
+    const processFrame = async () => {
+      if (!video || !canvas || !ctx || !segmenterRef.current) return;
+      if (video.paused || video.ended || video.readyState < 2) return;
+
+      // Set canvas size to match video
+      if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+      }
+
+      // If filter is disabled, just draw the video
+      if (!isFilterEnabledRef.current) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      } else {
+        // Use MediaPipe to segment the person
+        await segmenterRef.current.send({ image: video });
+      }
+
+      // FPS counter
+      frameCountRef.current++;
+      const now = Date.now();
+      if (now - lastFrameTimeRef.current >= 1000) {
+        setFps(frameCountRef.current);
+        frameCountRef.current = 0;
+        lastFrameTimeRef.current = now;
+      }
+
+      animationFrameRef.current = requestAnimationFrame(processFrame);
+    };
+
+    // Set up MediaPipe results handler
+    if (segmenterRef.current) {
+      segmenterRef.current.onResults((results) => {
+        if (!ctx || !canvas) return;
+
+        const filter = currentFilterRef.current;
+
+        ctx.save();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw background with filter
+        ctx.save();
+        if (filter === 'blur') {
+          ctx.filter = 'blur(10px)';
+        }
+        ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+
+        if (filter !== 'blur') {
+          // Apply grayscale or sepia
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          applyFilter(imageData, filter);
+          ctx.putImageData(imageData, 0, 0);
+        }
+        ctx.restore();
+
+        // Mask to only show background
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.drawImage(results.segmentationMask, 0, 0, canvas.width, canvas.height);
+
+        // Draw person in color on top
+        ctx.globalCompositeOperation = 'destination-over';
+        ctx.filter = 'none';
+        ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+        ctx.restore();
+      });
+    }
+
+    const handleLoadedMetadata = () => {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    };
+
+    const handlePlay = () => {
+      setIsPlaying(true);
+      processFrame();
+    };
+
+    const handlePause = () => {
+      setIsPlaying(false);
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
+    video.addEventListener('play', handlePlay);
+    video.addEventListener('pause', handlePause);
+
+    return () => {
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      video.removeEventListener('play', handlePlay);
+      video.removeEventListener('pause', handlePause);
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, []); // Empty dependency array - only run once on mount
+
+  const handleCanvasClick = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) {
+      video.play();
+    } else {
+      video.pause();
+    }
+  };
+
+  return (
+    <div style={{ position: 'relative', display: 'inline-block', width: '100%', maxWidth: '800px' }}>
+      <video
+        ref={videoRef}
+        src={src}
+        crossOrigin="anonymous"
+        style={{ display: 'none' }}
+        playsInline
+      />
+      <canvas
+        ref={canvasRef}
+        onClick={handleCanvasClick}
+        style={{
+          width: '100%',
+          height: 'auto',
+          borderRadius: '8px',
+          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+          cursor: 'pointer',
+          backgroundColor: '#000'
+        }}
+      />
+      <div style={{
+        position: 'absolute',
+        top: '10px',
+        right: '10px',
+        background: 'rgba(0, 0, 0, 0.7)',
+        color: 'white',
+        padding: '5px 10px',
+        borderRadius: '4px',
+        fontSize: '12px'
+      }}>
+        {isPlaying ? `Processing: ${fps} FPS` : 'Click to Play'}
+      </div>
+      <div style={{
+        marginTop: '10px',
+        display: 'flex',
+        gap: '10px',
+        justifyContent: 'center'
+      }}>
+        <button
+          onClick={handleCanvasClick}
+          style={{
+            padding: '10px 20px',
+            background: '#007bff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 'bold'
+          }}
+        >
+          {isPlaying ? '⏸ Pause' : '▶ Play'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default FilteredVideoPlayer;
