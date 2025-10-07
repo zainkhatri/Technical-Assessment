@@ -27,17 +27,21 @@ const FilteredVideoPlayer: React.FC<FilteredVideoPlayerProps> = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [filterTimeline, setFilterTimeline] = useState<Array<{start: number, end: number, filter: string}>>([]);
+
+  // MediaPipe and animation refs
   const segmenterRef = useRef<SelfieSegmentation | null>(null);
   const animationFrameRef = useRef<number>();
   const frameCountRef = useRef<number>(0);
   const lastFrameTimeRef = useRef<number>(Date.now());
+
+  // Refs to avoid stale closures in animation loop
   const currentFilterRef = useRef<string>(filterType);
   const isFilterEnabledRef = useRef<boolean>(isFilterEnabled);
   const timelineModeRef = useRef<boolean>(timelineMode);
   const startTimeRef = useRef<number>(startTime);
   const endTimeRef = useRef<number>(endTime);
 
-  // Update refs when props change
+  // Keep refs in sync with props
   useEffect(() => {
     currentFilterRef.current = filterType;
   }, [filterType]);
@@ -52,12 +56,12 @@ const FilteredVideoPlayer: React.FC<FilteredVideoPlayerProps> = ({
     endTimeRef.current = endTime;
   }, [timelineMode, startTime, endTime]);
 
-  // Initialize MediaPipe Selfie Segmentation
+  // Initialize MediaPipe on mount
   useEffect(() => {
     const segmenter = new SelfieSegmentation({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`,
     });
-    segmenter.setOptions({ modelSelection: 1 });
+    segmenter.setOptions({ modelSelection: 1 }); // 1 = higher accuracy, 0 = faster
     segmenterRef.current = segmenter;
 
     return () => {
@@ -74,53 +78,55 @@ const FilteredVideoPlayer: React.FC<FilteredVideoPlayerProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Apply pixel level filters to image data
     const applyFilter = (imageData: ImageData, filter: string) => {
       const data = imageData.data;
 
       if (filter === 'grayscale') {
+        // Convert RGB to grayscale using luminosity formula
         for (let i = 0; i < data.length; i += 4) {
           const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
           data[i] = data[i + 1] = data[i + 2] = gray;
         }
       } else if (filter === 'sepia') {
+        // Apply sepia tone color matrix
         for (let i = 0; i < data.length; i += 4) {
           const r = data[i], g = data[i + 1], b = data[i + 2];
           data[i] = Math.min(255, 0.393 * r + 0.769 * g + 0.189 * b);
           data[i + 1] = Math.min(255, 0.349 * r + 0.686 * g + 0.168 * b);
           data[i + 2] = Math.min(255, 0.272 * r + 0.534 * g + 0.131 * b);
         }
-      } else if (filter === 'blur') {
-        // For blur, we'll use CSS filter instead as it's more performant
       }
 
       return imageData;
     };
 
+    // Main frame processing loop
     const processFrame = async () => {
       if (!video || !canvas || !ctx || !segmenterRef.current) return;
       if (video.paused || video.ended || video.readyState < 2) return;
 
-      // Set canvas size to match video
+      // Match canvas size to video dimensions
       if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
       }
 
-      // Check if we should apply filter based on timeline mode
+      // Determine if filter should be active based on timeline settings
       const shouldApplyFilter = isFilterEnabledRef.current && (
         !timelineModeRef.current ||
         (video.currentTime >= startTimeRef.current && video.currentTime <= endTimeRef.current)
       );
 
-      // If filter is disabled or outside timeline range, just draw the video
       if (!shouldApplyFilter) {
+        // Just display original video
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       } else {
-        // Use MediaPipe to segment the person
+        // Send frame to MediaPipe for person segmentation
         await segmenterRef.current.send({ image: video });
       }
 
-      // FPS counter
+      // Calculate and update FPS
       frameCountRef.current++;
       const now = Date.now();
       if (now - lastFrameTimeRef.current >= 1000) {
@@ -129,10 +135,11 @@ const FilteredVideoPlayer: React.FC<FilteredVideoPlayerProps> = ({
         lastFrameTimeRef.current = now;
       }
 
+      // Schedule next frame
       animationFrameRef.current = requestAnimationFrame(processFrame);
     };
 
-    // Set up MediaPipe results handler
+    // Handle MediaPipe segmentation results
     if (segmenterRef.current) {
       segmenterRef.current.onResults((results) => {
         if (!ctx || !canvas) return;
@@ -142,26 +149,26 @@ const FilteredVideoPlayer: React.FC<FilteredVideoPlayerProps> = ({
         ctx.save();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Draw background with filter
+        // Step 1: Draw entire frame with filter applied
         ctx.save();
         if (filter === 'blur') {
-          ctx.filter = 'blur(10px)';
+          ctx.filter = 'blur(10px)'; // Use GPU accelerated CSS filter
         }
         ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
 
         if (filter !== 'blur') {
-          // Apply grayscale or sepia
+          // Apply grayscale or sepia via pixel manipulation
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
           applyFilter(imageData, filter);
           ctx.putImageData(imageData, 0, 0);
         }
         ctx.restore();
 
-        // Mask to only show background
+        // Step 2: Cut out person using segmentation mask
         ctx.globalCompositeOperation = 'destination-out';
         ctx.drawImage(results.segmentationMask, 0, 0, canvas.width, canvas.height);
 
-        // Draw person in color on top
+        // Step 3: Draw original person behind filtered background
         ctx.globalCompositeOperation = 'destination-over';
         ctx.filter = 'none';
         ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
@@ -169,6 +176,7 @@ const FilteredVideoPlayer: React.FC<FilteredVideoPlayerProps> = ({
       });
     }
 
+    // Video metadata loaded, set canvas dimensions
     const handleLoadedMetadata = () => {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
@@ -176,10 +184,12 @@ const FilteredVideoPlayer: React.FC<FilteredVideoPlayerProps> = ({
       setDuration(video.duration);
     };
 
+    // Update time display
     const handleTimeUpdate = () => {
       setCurrentTime(video.currentTime);
     };
 
+    // Start frame processing loop when video plays
     const handlePlay = () => {
       setIsPlaying(true);
       if (animationFrameRef.current) {
@@ -188,6 +198,7 @@ const FilteredVideoPlayer: React.FC<FilteredVideoPlayerProps> = ({
       processFrame();
     };
 
+    // Stop frame processing when video pauses
     const handlePause = () => {
       setIsPlaying(false);
       if (animationFrameRef.current) {
@@ -195,6 +206,7 @@ const FilteredVideoPlayer: React.FC<FilteredVideoPlayerProps> = ({
       }
     };
 
+    // Stop frame processing when video ends
     const handleEnded = () => {
       setIsPlaying(false);
       if (animationFrameRef.current) {
@@ -202,12 +214,14 @@ const FilteredVideoPlayer: React.FC<FilteredVideoPlayerProps> = ({
       }
     };
 
+    // Attach event listeners
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
     video.addEventListener('play', handlePlay);
     video.addEventListener('pause', handlePause);
     video.addEventListener('ended', handleEnded);
     video.addEventListener('timeupdate', handleTimeUpdate);
 
+    // Cleanup on unmount
     return () => {
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
       video.removeEventListener('play', handlePlay);
@@ -218,8 +232,9 @@ const FilteredVideoPlayer: React.FC<FilteredVideoPlayerProps> = ({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, []); // Empty dependency array - only run once on mount
+  }, []);
 
+  // Toggle play/pause on canvas click
   const handleCanvasClick = () => {
     const video = videoRef.current;
     if (!video) return;
@@ -233,12 +248,14 @@ const FilteredVideoPlayer: React.FC<FilteredVideoPlayerProps> = ({
     }
   };
 
+  // Format seconds as MM:SS
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Seek to specific time
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const video = videoRef.current;
     if (!video) return;

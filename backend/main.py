@@ -6,10 +6,8 @@ from helpers import *
 
 app = Flask(__name__)
 cors = CORS(app)
-
 load_dotenv()
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -24,12 +22,9 @@ def hello_world():
 @app.route("/process-frame", methods=["POST"])
 def process_frame():
     """
-    Process a video frame to apply background filter while keeping person in color
-    Expected JSON body:
-    {
-        "image": "base64_encoded_image",
-        "filter": "grayscale" | "sepia" | "blur"
-    }
+    Apply background filter to video frame while keeping person in color
+    Request body: { "image": "base64_string", "filter": "grayscale|sepia|blur" }
+    Response: { "processedImage": "base64_string", "filter": "grayscale" }
     """
     try:
         data = request.get_json()
@@ -42,7 +37,6 @@ def process_frame():
 
         logger.info(f"Processing frame with filter: {filter_type}")
 
-        # Process the frame
         processed_image = process_frame_with_background_filter(image_data, filter_type)
 
         return jsonify({

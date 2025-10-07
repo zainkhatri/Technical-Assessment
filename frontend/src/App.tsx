@@ -13,14 +13,19 @@ export interface FaceDetection {
   }
 
 const App: React.FC = () => {
+  // Filter settings
   const [filterType, setFilterType] = useState<string>('grayscale');
   const [isFilterEnabled, setIsFilterEnabled] = useState<boolean>(true);
-  const [response, setResponse] = useState<string>('');
+
+  // Video source
   const [currentVideoUrl, setCurrentVideoUrl] = useState<string>(videoUrl);
+
+  // Timeline controls
   const [timelineMode, setTimelineMode] = useState<boolean>(false);
   const [startTime, setStartTime] = useState<number>(0);
   const [endTime, setEndTime] = useState<number>(10);
 
+  // Handle video file upload
   const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && file.type.startsWith('video/')) {
