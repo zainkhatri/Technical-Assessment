@@ -24,6 +24,18 @@ const App: React.FC = () => {
   const [timelineMode, setTimelineMode] = useState<boolean>(false);
   const [startTime, setStartTime] = useState<number>(0);
   const [endTime, setEndTime] = useState<number>(10);
+  const [videoDuration, setVideoDuration] = useState<number>(60);
+
+  // Format time as MM:SS or SS.Xs
+  const formatTime = (seconds: number) => {
+    if (seconds >= 60) {
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      const decimal = ((seconds % 1) * 10).toFixed(0);
+      return decimal !== '0' ? `${mins}:${secs.toString().padStart(2, '0')}.${decimal}` : `${mins}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${seconds.toFixed(1)}s`;
+  };
 
   // Handle video file upload
   const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -32,6 +44,12 @@ const App: React.FC = () => {
       const url = URL.createObjectURL(file);
       setCurrentVideoUrl(url);
     }
+  };
+
+  // Handle duration update from video player
+  const handleDurationChange = (duration: number) => {
+    setVideoDuration(duration);
+    setEndTime(Math.min(endTime, duration));
   };
 
   return (
@@ -59,7 +77,7 @@ const App: React.FC = () => {
           letterSpacing: '8px',
           textTransform: 'uppercase'
         }}>
-          Cinema Filter
+          Background Filter
         </h1>
         <p style={{
           color: '#666',
@@ -87,6 +105,7 @@ const App: React.FC = () => {
           timelineMode={timelineMode}
           startTime={startTime}
           endTime={endTime}
+          onDurationChange={handleDurationChange}
         />
       </div>
 
@@ -266,12 +285,12 @@ const App: React.FC = () => {
                   marginBottom: '8px',
                   letterSpacing: '0.5px'
                 }}>
-                  Start: {startTime.toFixed(1)}s
+                  Start: {formatTime(startTime)}
                 </label>
                 <input
                   type="range"
                   min="0"
-                  max="60"
+                  max={videoDuration}
                   step="0.5"
                   value={startTime}
                   onChange={(e) => setStartTime(parseFloat(e.target.value))}
@@ -290,12 +309,12 @@ const App: React.FC = () => {
                   marginBottom: '8px',
                   letterSpacing: '0.5px'
                 }}>
-                  End: {endTime.toFixed(1)}s
+                  End: {formatTime(endTime)}
                 </label>
                 <input
                   type="range"
                   min="0"
-                  max="60"
+                  max={videoDuration}
                   step="0.5"
                   value={endTime}
                   onChange={(e) => setEndTime(parseFloat(e.target.value))}
